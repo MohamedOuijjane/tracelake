@@ -1,0 +1,39 @@
+# Local config
+.env
+.claude/
+
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Java
+target/
+*.class
+.mvn/wrapper/maven-wrapper.jar
+
+# Go
+services/inventory/bin/
+
+# Spark and Hudi local runs
+spark-warehouse/
+metastore_db/
+derby.log
+checkpoints/
+
+# Airflow
+airflow/logs/
+airflow/*.cfg
+airflow/*.db
+
+# Editors and OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
