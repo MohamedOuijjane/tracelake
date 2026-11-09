@@ -1,0 +1,15 @@
+# Each line: path pattern, then owners. Later lines win.
+
+/services/   @member1
+/otel/       @member1
+/loadgen/    @member1
+/kafka/      @member1
+
+/lakehouse/  @member2
+/contracts/  @member2
+
+/spark/      @member3
+
+/airflow/    @member4
+/grafana/    @member4
+/.github/    @member4
