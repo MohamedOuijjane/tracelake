@@ -1,0 +1,22 @@
+{
+  "type": "record",
+  "name": "MetricPoint",
+  "namespace": "io.tracelake.contracts",
+  "doc": "One metric data point after flattening OTLP resourceMetrics. Silver metrics table row.",
+  "fields": [
+    {"name": "service", "type": "string", "doc": "resource attribute service.name"},
+    {"name": "metric_name", "type": "string", "doc": "For example http.server.request.duration"},
+    {
+      "name": "metric_type",
+      "type": {"type": "enum", "name": "MetricType", "symbols": ["GAUGE", "SUM", "HISTOGRAM", "EXPONENTIAL_HISTOGRAM", "SUMMARY"]}
+    },
+    {"name": "unit", "type": ["null", "string"], "default": null},
+    {"name": "ts", "type": {"type": "long", "logicalType": "timestamp-micros"}, "doc": "Data point time, UTC"},
+    {"name": "value", "type": ["null", "double"], "default": null, "doc": "Gauge or sum value"},
+    {"name": "count", "type": ["null", "long"], "default": null, "doc": "Histogram count"},
+    {"name": "sum", "type": ["null", "double"], "default": null, "doc": "Histogram sum"},
+    {"name": "bucket_bounds", "type": {"type": "array", "items": "double"}, "default": []},
+    {"name": "bucket_counts", "type": {"type": "array", "items": "long"}, "default": []},
+    {"name": "attributes", "type": {"type": "map", "values": "string"}, "default": {}}
+  ]
+}

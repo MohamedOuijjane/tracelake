@@ -1,0 +1,22 @@
+{
+  "type": "record",
+  "name": "Span",
+  "namespace": "io.tracelake.contracts",
+  "doc": "One span after flattening OTLP resourceSpans. Silver spans table row.",
+  "fields": [
+    {"name": "trace_id", "type": "string", "doc": "32 hex chars, W3C trace id"},
+    {"name": "span_id", "type": "string", "doc": "16 hex chars"},
+    {"name": "parent_span_id", "type": ["null", "string"], "default": null, "doc": "Null for root spans"},
+    {"name": "service", "type": "string", "doc": "resource attribute service.name"},
+    {"name": "operation", "type": "string", "doc": "Span name, for example GET /orders/{id}"},
+    {"name": "start_ts", "type": {"type": "long", "logicalType": "timestamp-micros"}, "doc": "Span start time, UTC"},
+    {"name": "duration_ms", "type": "double", "doc": "end - start in milliseconds"},
+    {
+      "name": "status_code",
+      "type": {"type": "enum", "name": "StatusCode", "symbols": ["UNSET", "OK", "ERROR"]},
+      "default": "UNSET",
+      "doc": "OTLP span status code"
+    },
+    {"name": "attributes", "type": {"type": "map", "values": "string"}, "default": {}, "doc": "Span attributes, values stringified"}
+  ]
+}
