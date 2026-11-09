@@ -1,0 +1,70 @@
+{
+  "uid": "red-overview",
+  "title": "RED overview",
+  "tags": ["tracelake", "red"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": { "type": "trino-datasource", "uid": "trino" },
+        "query": "SELECT DISTINCT service FROM hudi.gold.red_metrics ORDER BY 1",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Request rate (req/s)",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
+      "datasource": { "type": "trino-datasource", "uid": "trino" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 0,
+          "rawSQL": "SELECT minute AS time, service, request_rate FROM hudi.gold.red_metrics WHERE $__timeFilter(minute) AND service IN ($service) ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Error rate",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 },
+      "datasource": { "type": "trino-datasource", "uid": "trino" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 0,
+          "rawSQL": "SELECT minute AS time, service, error_rate FROM hudi.gold.red_metrics WHERE $__timeFilter(minute) AND service IN ($service) ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Latency p95 (ms)",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 },
+      "datasource": { "type": "trino-datasource", "uid": "trino" },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 0,
+          "rawSQL": "SELECT minute AS time, service, p95_ms FROM hudi.gold.red_metrics WHERE $__timeFilter(minute) AND service IN ($service) ORDER BY 1"
+        }
+      ]
+    }
+  ]
+}
