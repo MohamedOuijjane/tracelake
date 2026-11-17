@@ -528,8 +528,9 @@ services:
     command: ["run", "/scripts/scenarios.js"]
     environment:
       BASE_URL: http://gateway:8080
-      K6_VUS: ${K6_VUS}
-      K6_DURATION: ${K6_DURATION}
+      # k6 treats K6_* env vars as its own options, so pass them under other names.
+      PEAK_VUS: ${K6_VUS}
+      LOAD_DURATION: ${K6_DURATION}
     volumes:
       - ./loadgen/k6:/scripts:ro
     healthcheck:
