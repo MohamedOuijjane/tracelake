@@ -80,8 +80,8 @@ jobs:
           - services/gateway
           - services/orders
           - services/payments
-          - services/inventory
-          - services/notification
+          - services/restaurants
+          - services/delivery
           - otel
     steps:
       - uses: actions/checkout@v4
