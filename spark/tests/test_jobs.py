@@ -5,7 +5,7 @@ from jobs.gold_red_metrics import red_metrics
 from jobs.silver_spans import flatten_spans
 
 
-def _payload(trace_id, span_id, start_ns, end_ns, status=1, parent=""):
+def _payload(trace_id, span_id, start_ns, end_ns, status=1, parent="", kind=2):
     return json.dumps(
         {
             "resourceSpans": [
@@ -21,7 +21,7 @@ def _payload(trace_id, span_id, start_ns, end_ns, status=1, parent=""):
                                     "spanId": span_id,
                                     "parentSpanId": parent,
                                     "name": "POST /orders",
-                                    "kind": 2,
+                                    "kind": kind,
                                     "startTimeUnixNano": str(start_ns),
                                     "endTimeUnixNano": str(end_ns),
                                     "attributes": [
@@ -52,15 +52,28 @@ def test_flatten_spans_matches_contract(spark):
     assert row.service == "orders"
     assert row.duration_ms == 25.0
     assert row.status_code == "OK"
+    assert row.kind == "SERVER"
     assert row.attributes["http.response.status_code"] == "201"
     assert row.date == "2025-11-09"
 
 
+def test_flatten_spans_maps_span_kind(spark):
+    start = 1_762_646_400_000_000_000
+    rows = [
+        (_payload("a" * 32, f"{i:016x}", start, start + 1_000_000, kind=k),)
+        for i, k in enumerate([1, 2, 3, 4, 5, 0])
+    ]
+    out = flatten_spans(spark.createDataFrame(rows, ["payload"])).orderBy("span_id").collect()
+    expected = ["INTERNAL", "SERVER", "CLIENT", "INTERNAL", "INTERNAL", "INTERNAL"]
+    assert [r.kind for r in out] == expected
+
+
 def test_red_metrics_per_minute(spark):
     t = datetime(2026, 11, 9, 10, 0, 5)
-    rows = [("orders", 2, t, float(d), "ERROR" if d == 100 else "OK") for d in range(1, 101)]
+    rows = [("orders", "SERVER", t, float(d), "ERROR" if d == 100 else "OK") for d in range(1, 101)]
+    client = [("orders", "CLIENT", t, 500.0, "ERROR")]
     spans = spark.createDataFrame(
-        rows, ["service", "kind", "start_ts", "duration_ms", "status_code"]
+        rows + client, ["service", "kind", "start_ts", "duration_ms", "status_code"]
     )
     out = red_metrics(spans).collect()
     assert len(out) == 1

@@ -69,6 +69,8 @@ OTLP_TRACES = T.StructType(
 )
 
 STATUS_NAMES = {0: "UNSET", 1: "OK", 2: "ERROR"}
+# OTLP span kinds kept by the contract. 0, 1, 4 and 5 become INTERNAL.
+KIND_NAMES = {2: "SERVER", 3: "CLIENT"}
 
 HUDI_OPTIONS = {
     "hoodie.table.name": "spans",
@@ -100,6 +102,14 @@ def status_name(code: F.Column) -> F.Column:
     return expr
 
 
+def kind_name(kind: F.Column) -> F.Column:
+    """OTLP span kind (int) -> contract enum name."""
+    expr = F.lit("INTERNAL")
+    for value, name in KIND_NAMES.items():
+        expr = F.when(kind == value, name).otherwise(expr)
+    return expr
+
+
 def flatten_spans(bronze: DataFrame) -> DataFrame:
     """Bronze rows with an OTLP JSON payload -> rows matching contracts/span.avsc."""
     parsed = bronze.select(F.from_json("payload", OTLP_TRACES).alias("otlp"))
@@ -121,7 +131,7 @@ def flatten_spans(bronze: DataFrame) -> DataFrame:
         .alias("parent_span_id"),
         F.coalesce("service", F.lit("unknown")).alias("service"),
         F.col("s.name").alias("operation"),
-        F.col("s.kind").alias("kind"),
+        kind_name(F.col("s.kind")).alias("kind"),
         F.timestamp_micros((start_ns / 1000).cast("long")).alias("start_ts"),
         F.timestamp_micros((end_ns / 1000).cast("long")).alias("end_ts"),
         ((end_ns - start_ns) / 1e6).cast("double").alias("duration_ms"),

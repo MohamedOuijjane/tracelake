@@ -14,7 +14,7 @@ from pyspark.sql import functions as F
 
 from common.spark_session import get_spark
 
-SPAN_KIND_SERVER = 2
+SPAN_KIND_SERVER = "SERVER"
 
 HUDI_OPTIONS = {
     "hoodie.table.name": "red_metrics",
