@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 COPY requirements.txt .
-# opentelemetry-bootstrap installs instrumentations for the libraries found (fastapi, httpx).
+# opentelemetry-bootstrap installs instrumentations for the libraries found (fastapi).
 RUN pip install -r requirements.txt && opentelemetry-bootstrap -a install
 
 COPY app ./app

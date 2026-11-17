@@ -1,6 +1,6 @@
 # payments
 
-Payment service on FastAPI (Python 3.12). It simulates a card processor with random latency and a configurable failure rate, then calls `notification`.
+Payment service on FastAPI (Python 3.12). It simulates a card processor with random latency and a configurable failure rate. `orders` calls it after the restaurant confirms the dishes are available.
 
 ## Endpoints
 
@@ -12,14 +12,14 @@ Payment service on FastAPI (Python 3.12). It simulates a card processor with ran
 ```
 curl -X POST localhost:8000/api/payments \
   -H 'Content-Type: application/json' \
-  -d '{"order_id":1,"amount":49.9}'
+  -d '{"order_id":1,"amount":24.5}'
 ```
 
 Returns `201` with a payment id, or `502` when the simulated processor declines.
 
 ## Telemetry
 
-Started with `opentelemetry-instrument`. FastAPI and httpx are instrumented automatically. Set:
+Started with `opentelemetry-instrument`. FastAPI is instrumented automatically and emits a `SERVER` span that continues the W3C `traceparent` sent by `orders`. Set:
 
 | Variable | Example |
 |---|---|
@@ -31,7 +31,6 @@ Started with `opentelemetry-instrument`. FastAPI and httpx are instrumented auto
 
 | Variable | Default |
 |---|---|
-| `NOTIFICATION_URL` | `http://localhost:8004` |
 | `PAYMENT_FAILURE_RATE` | `0.05` |
 
 ## Run locally
