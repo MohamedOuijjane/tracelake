@@ -12,9 +12,20 @@ spring:
     hibernate:
       ddl-auto: update
     open-in-view: false
+  jackson:
+    # Same JSON style as the Go and Python services: restaurant_id, dish_id, courier_id.
+    property-naming-strategy: SNAKE_CASE
+  http:
+    client:
+      connect-timeout: 2s
+      read-timeout: 5s
 
-inventory:
-  url: ${INVENTORY_URL:http://localhost:8003}
+restaurants:
+  url: ${RESTAURANTS_URL:http://localhost:8003}
+payments:
+  url: ${PAYMENTS_URL:http://localhost:8002}
+delivery:
+  url: ${DELIVERY_URL:http://localhost:8004}
 
 management:
   endpoints:
