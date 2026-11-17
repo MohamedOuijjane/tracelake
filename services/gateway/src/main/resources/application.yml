@@ -7,28 +7,24 @@ spring:
   cloud:
     gateway:
       routes:
+        # /api/menu/1 -> restaurants /restaurants/1/menu
+        - id: menu
+          uri: ${RESTAURANTS_URL:http://localhost:8003}
+          predicates:
+            - Path=/api/menu/{id}
+          filters:
+            - SetPath=/restaurants/{id}/menu
         - id: orders
           uri: ${ORDERS_URL:http://localhost:8081}
           predicates:
             - Path=/api/orders/**,/api/orders
           filters:
             - StripPrefix=1
+        # Direct charges (tips, retries) used by the k6 "pay" scenario.
         - id: payments
           uri: ${PAYMENTS_URL:http://localhost:8002}
           predicates:
             - Path=/api/payments/**,/api/payments
-          filters:
-            - StripPrefix=1
-        - id: inventory
-          uri: ${INVENTORY_URL:http://localhost:8003}
-          predicates:
-            - Path=/api/inventory/**
-          filters:
-            - StripPrefix=1
-        - id: notifications
-          uri: ${NOTIFICATION_URL:http://localhost:8004}
-          predicates:
-            - Path=/api/notifications/**,/api/notifications
           filters:
             - StripPrefix=1
 
