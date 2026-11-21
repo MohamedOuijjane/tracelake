@@ -20,12 +20,15 @@ Kafka topics carry raw OTLP JSON from the collector, not these schemas. The mapp
 | `duration_ms` | `(endTimeUnixNano - startTimeUnixNano) / 1e6` |
 | `status_code` | `...spans[].status.code` (0 UNSET, 1 OK, 2 ERROR) |
 | `attributes` | `...spans[].attributes[]` as a string map |
+| `kind` | `...spans[].kind` (2 SERVER, 3 CLIENT, anything else INTERNAL) |
 
 ## Rules for changes
 
 - Only add fields with a default. Never rename or remove a field in place.
 - Breaking changes need a new record name (for example `SpanV2`) and an ADR.
 - Update the Silver job and this README in the same PR.
+
+`kind` lets readers tell the two sides of a call apart. A request from `orders` to `payments` produces a `CLIENT` span in `orders` and a `SERVER` span in `payments`, with the same `trace_id`. RED metrics count `SERVER` spans only, and the dependency graph pairs each `CLIENT` span with the `SERVER` span whose `parent_span_id` points to it. OTLP `PRODUCER`, `CONSUMER` and `UNSPECIFIED` are folded into `INTERNAL`: no service emits them today.
 
 Validate a schema locally:
 

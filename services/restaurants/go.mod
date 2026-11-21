@@ -1,4 +1,4 @@
-module github.com/tracelake/tracelake/services/inventory
+module github.com/tracelake/tracelake/services/restaurants
 
 go 1.23
 

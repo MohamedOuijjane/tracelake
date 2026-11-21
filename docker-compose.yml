@@ -20,6 +20,8 @@ x-otel-env: &otel-env
   OTEL_METRICS_EXPORTER: otlp
   OTEL_LOGS_EXPORTER: otlp
   OTEL_RESOURCE_ATTRIBUTES: deployment.environment=local
+  # W3C traceparent on every outgoing call, so one order is one trace across services.
+  OTEL_PROPAGATORS: tracecontext,baggage
 
 x-spark-env: &spark-env
   SPARK_NO_DAEMONIZE: "true"
@@ -256,13 +258,13 @@ services:
           memory: 256m
     networks: [tracelake]
 
-  inventory:
-    build: ./services/inventory
-    image: tracelake/inventory:0.1.0
+  restaurants:
+    build: ./services/restaurants
+    image: tracelake/restaurants:0.1.0
     profiles: *full-profiles
     environment:
       <<: *otel-env
-      OTEL_SERVICE_NAME: inventory
+      OTEL_SERVICE_NAME: restaurants
       PORT: "8080"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/health"]
@@ -278,13 +280,13 @@ services:
           memory: 128m
     networks: [tracelake]
 
-  notification:
-    build: ./services/notification
-    image: tracelake/notification:0.1.0
+  delivery:
+    build: ./services/delivery
+    image: tracelake/delivery:0.1.0
     profiles: *full-profiles
     environment:
       <<: *otel-env
-      OTEL_SERVICE_NAME: notification
+      OTEL_SERVICE_NAME: delivery
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 10s
@@ -306,7 +308,6 @@ services:
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: payments
-      NOTIFICATION_URL: http://notification:8000
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 10s
@@ -315,14 +316,13 @@ services:
     depends_on:
       otel-collector:
         condition: service_healthy
-      notification:
-        condition: service_healthy
     deploy:
       resources:
         limits:
           memory: 256m
     networks: [tracelake]
 
+  # POST /orders calls restaurants, then payments, then delivery.
   orders:
     build: ./services/orders
     image: tracelake/orders:0.1.0
@@ -333,7 +333,9 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${ORDERS_DB_NAME}
       SPRING_DATASOURCE_USERNAME: ${ORDERS_DB_USER}
       SPRING_DATASOURCE_PASSWORD: ${ORDERS_DB_PASSWORD}
-      INVENTORY_URL: http://inventory:8080
+      RESTAURANTS_URL: http://restaurants:8080
+      PAYMENTS_URL: http://payments:8000
+      DELIVERY_URL: http://delivery:8000
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
       interval: 15s
@@ -343,7 +345,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      inventory:
+      restaurants:
+        condition: service_healthy
+      payments:
+        condition: service_healthy
+      delivery:
         condition: service_healthy
       otel-collector:
         condition: service_healthy
@@ -360,10 +366,9 @@ services:
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: gateway
+      RESTAURANTS_URL: http://restaurants:8080
       ORDERS_URL: http://orders:8080
       PAYMENTS_URL: http://payments:8000
-      INVENTORY_URL: http://inventory:8080
-      NOTIFICATION_URL: http://notification:8000
     ports:
       - "8000:8080"
     healthcheck:
@@ -377,9 +382,7 @@ services:
         condition: service_healthy
       payments:
         condition: service_healthy
-      inventory:
-        condition: service_healthy
-      notification:
+      restaurants:
         condition: service_healthy
     deploy:
       resources:
@@ -525,8 +528,9 @@ services:
     command: ["run", "/scripts/scenarios.js"]
     environment:
       BASE_URL: http://gateway:8080
-      K6_VUS: ${K6_VUS}
-      K6_DURATION: ${K6_DURATION}
+      # k6 treats K6_* env vars as its own options, so pass them under other names.
+      PEAK_VUS: ${K6_VUS}
+      LOAD_DURATION: ${K6_DURATION}
     volumes:
       - ./loadgen/k6:/scripts:ro
     healthcheck:

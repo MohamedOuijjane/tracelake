@@ -28,6 +28,9 @@ exporters:
     protocol_version: 2.1.0
     topic: otel.traces
     encoding: otlp_json
+    # Key each message by trace id, so all spans of a trace land in the same partition
+    # and stay ordered for the Silver job.
+    partition_traces_by_id: true
     producer:
       compression: lz4
   kafka/metrics:

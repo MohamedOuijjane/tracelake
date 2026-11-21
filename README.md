@@ -1,10 +1,10 @@
 # tracelake
 
-A real-time observability platform for microservices: it collects traces and metrics with OpenTelemetry, streams them through Kafka, stores them in a Hudi lakehouse, detects performance anomalies with Spark, and shows service health in Grafana.
+A real-time observability platform for microservices, demonstrated on a food delivery platform: it collects traces and metrics with OpenTelemetry, streams them through Kafka, stores them in a Hudi lakehouse, detects performance anomalies with Spark, and shows service health in Grafana.
 
 ## Why
 
-When a request crosses five services and gets slow, the hard part is finding which service is responsible. Logs on each box tell part of the story. tracelake keeps every span, joins them into call paths, computes rate, errors and latency per service every minute, and flags the service whose behaviour changed. The goal is to answer "who slowed down, since when, and what calls it" from one dashboard.
+When a lunch order crosses five services and gets slow, the hard part is finding which service is responsible. Logs on each box tell part of the story. tracelake keeps every span, joins them into call paths, computes rate, errors and latency per service every minute, and flags the service whose behaviour changed. The goal is to answer "who slowed down, since when, and what calls it" from one dashboard.
 
 ## Architecture
 
@@ -13,15 +13,17 @@ flowchart LR
   subgraph apps[Microservices]
     gw[gateway<br/>Spring Cloud Gateway]
     ord[orders<br/>Spring Boot]
+    rest[restaurants<br/>Go]
     pay[payments<br/>FastAPI]
-    inv[inventory<br/>Go]
-    notif[notification<br/>FastAPI]
+    del[delivery<br/>FastAPI]
     pg[(postgres)]
   end
   k6[k6 loadgen] --> gw
-  gw --> ord & pay & inv
-  ord --> inv & pg
-  pay --> notif
+  gw --> ord & rest & pay
+  ord -->|1 check| rest
+  ord -->|2 charge| pay
+  ord -->|3 courier| del
+  ord --> pg
 
   apps -- OTLP --> col[OTel Collector]
   col -- otlp_json --> kafka[(Kafka<br/>otel.traces / otel.metrics / otel.logs)]
@@ -42,9 +44,29 @@ flowchart LR
 
 More detail in [docs/architecture.md](docs/architecture.md).
 
+## Food delivery flow
+
+The five services form a small food delivery platform. Placing an order through the gateway produces one trace that spans all five:
+
+| Service | Language | Role |
+|---|---|---|
+| gateway | Java, Spring Cloud Gateway | Entry point: `/api/menu/{id}`, `/api/orders`, `/api/payments` |
+| restaurants | Go | Menus, dish availability, preparation time |
+| orders | Java, Spring Boot, Postgres | Calls restaurants, then payments, then delivery, stores the order |
+| payments | Python, FastAPI | Charges the order, about 5% of charges are declined |
+| delivery | Python, FastAPI | Assigns a courier and returns an ETA |
+
+Every hop carries the W3C `traceparent` header. The caller emits a `CLIENT` span and the callee a `SERVER` span, and the span kind is kept in [contracts/span.avsc](contracts/span.avsc). The collector keys `otel.traces` messages by trace id, so one order stays in one partition.
+
+```
+make up-full
+make order
+```
+
 ## Features
 
-- OpenTelemetry auto-instrumentation in Java, Python and Go services, configured only through env vars.
+- OpenTelemetry auto-instrumentation in Java, Python and Go services, configured only through env vars, with W3C trace context on every call.
+- k6 load that imitates a lunch peak: quiet, ramp up, peak, ramp down.
 - One OTel Collector that exports traces, metrics and logs to Kafka as OTLP JSON.
 - Bronze ingestion with Spark Structured Streaming, partitioned by date and hour, with checkpoints on MinIO.
 - Silver span table in Apache Hudi (Merge on Read), keyed on `trace_id` + `span_id`, so late and duplicate spans are upserted.
@@ -87,7 +109,7 @@ Stop with `make down`. Remove all data with `make clean`.
 
 | Service | URL | Notes |
 |---|---|---|
-| Gateway (API entry) | http://localhost:8000 | `/api/catalog`, `/api/orders`, `/api/payments` |
+| Gateway (API entry) | http://localhost:8000 | `/api/menu/{id}`, `/api/orders`, `/api/payments` |
 | Grafana | http://localhost:3000 | login from `.env` |
 | Airflow | http://localhost:8081 | login from `.env` |
 | Trino | http://localhost:8082 | user `grafana`, no password |
@@ -121,10 +143,10 @@ The Hudi bundle is picked to match the Spark minor version (`spark3.5`) and Scal
 ```
 .
 ├── docker-compose.yml     one file, three profiles
-├── Makefile               up, up-full, demo, down, clean, topics, logs, ps, test, lint, seed
+├── Makefile               up, up-full, demo, down, clean, topics, logs, ps, test, lint, seed, order
 ├── contracts/             Avro schemas for spans and metrics
 ├── docs/                  architecture and ADRs
-├── services/              gateway, orders, payments, inventory, notification
+├── services/              gateway, orders, restaurants, payments, delivery
 ├── otel/                  collector config and image
 ├── loadgen/               k6 scenarios, chaos notes
 ├── kafka/                 topic creation and sample data

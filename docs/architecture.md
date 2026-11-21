@@ -5,16 +5,17 @@
 ```mermaid
 flowchart TD
   k6[k6 loadgen] -->|HTTP| gw[gateway :8080]
+  gw -->|/api/menu| rest[restaurants]
   gw -->|/api/orders| ord[orders]
   gw -->|/api/payments| pay[payments]
-  gw -->|/api/inventory| inv[inventory]
-  ord -->|reserve stock| inv
+  ord -->|1 check dishes| rest
+  ord -->|2 charge| pay
+  ord -->|3 assign courier| del[delivery]
   ord -->|JDBC| pg[(postgres)]
-  pay -->|notify| notif[notification]
 
-  gw & ord & pay & inv & notif -->|OTLP HTTP :4318| col[OTel Collector]
+  gw & ord & rest & pay & del -->|OTLP HTTP :4318| col[OTel Collector]
 
-  col -->|kafka exporter, otlp_json| t1[[otel.traces]]
+  col -->|kafka exporter, otlp_json<br/>keyed by trace id| t1[[otel.traces]]
   col --> t2[[otel.metrics]]
   col --> t3[[otel.logs]]
 
@@ -36,6 +37,25 @@ flowchart TD
   af -.->|weekly retrain| al
   af -.->|data quality| b
 ```
+
+## One order, one trace
+
+`POST /api/orders` enters the gateway and fans out from `orders`:
+
+```
+gateway      SERVER  POST orders
+gateway      CLIENT  POST
+orders       SERVER  POST /orders
+orders       CLIENT  POST          -> restaurants  SERVER  POST /restaurants/{id}/check
+orders       CLIENT  INSERT orders.food_orders
+orders       CLIENT  POST          -> payments     SERVER  POST /payments
+orders       CLIENT  POST          -> delivery     SERVER  POST /deliveries
+orders       CLIENT  UPDATE orders.food_orders
+```
+
+This is a simplified view of a real trace: the agents also add `INTERNAL` spans for Spring Data, Hibernate and the ASGI send and receive steps.
+
+The Java agent (gateway, orders), `otelhttp` (restaurants) and `opentelemetry-instrument` (payments, delivery) all use the W3C `traceparent` header (`OTEL_PROPAGATORS=tracecontext,baggage`), so every span shares one `trace_id`. The collector sets `partition_traces_by_id`, so all spans of a trace land in the same `otel.traces` partition. Silver keeps the span kind, which Gold uses to count only `SERVER` spans in RED metrics and to pair `CLIENT` and `SERVER` spans in the dependency graph.
 
 ## Layers
 

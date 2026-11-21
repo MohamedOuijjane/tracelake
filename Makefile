@@ -6,7 +6,7 @@ DEMO := $(COMPOSE) --profile demo
 ALL  := $(COMPOSE) --profile core --profile full --profile demo
 
 .DEFAULT_GOAL := help
-.PHONY: help env up up-full demo down clean topics logs ps test test-spark test-dags lint seed bronze
+.PHONY: help env up up-full demo down clean topics logs ps test test-spark test-dags lint seed bronze order
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  %-10s %s\n", $$1, $$2}'
@@ -59,6 +59,11 @@ lint: ## Run ruff on all Python code
 
 seed: ## Push sample OTLP spans to otel.traces
 	$(CORE) exec -T kafka bash /opt/tracelake/kafka/seed-sample-spans.sh
+
+order: ## Place one food order through the gateway (needs the full profile)
+	curl -fsS -X POST localhost:8000/api/orders -H 'Content-Type: application/json' \
+	  -d '{"restaurant_id":"1","items":[{"dish_id":"pz-margherita","quantity":2}],"address":"12 Rue de la Paix"}'
+	@echo
 
 bronze: ## Start the Bronze streaming job on the Spark cluster (log: /tmp/bronze_ingest.log)
 	$(CORE) exec -d spark-master bash -c "bash /opt/tracelake/spark/submit.sh bronze_ingest > /tmp/bronze_ingest.log 2>&1"

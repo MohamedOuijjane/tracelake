@@ -17,6 +17,12 @@
       "default": "UNSET",
       "doc": "OTLP span status code"
     },
-    {"name": "attributes", "type": {"type": "map", "values": "string"}, "default": {}, "doc": "Span attributes, values stringified"}
+    {"name": "attributes", "type": {"type": "map", "values": "string"}, "default": {}, "doc": "Span attributes, values stringified"},
+    {
+      "name": "kind",
+      "type": {"type": "enum", "name": "SpanKind", "symbols": ["SERVER", "CLIENT", "INTERNAL"], "default": "INTERNAL"},
+      "default": "INTERNAL",
+      "doc": "Span kind: SERVER for handled requests, CLIENT for outgoing calls, INTERNAL otherwise"
+    }
   ]
 }

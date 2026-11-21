@@ -18,7 +18,7 @@ target/
 .mvn/wrapper/maven-wrapper.jar
 
 # Go
-services/inventory/bin/
+services/restaurants/bin/
 
 # Spark and Hudi local runs
 spark-warehouse/
