@@ -466,6 +466,56 @@ services:
         limits:
           memory: 1g
 
+  # ---------------------------------------------------------------- full: Hive Metastore database
+
+  hive-metastore-db:
+    image: postgres:16.4-alpine
+    profiles: [full, demo]
+    environment:
+      POSTGRES_DB: ${HIVE_DB_NAME}
+      POSTGRES_USER: ${HIVE_DB_USER}
+      POSTGRES_PASSWORD: ${HIVE_DB_PASSWORD}
+    volumes:
+      - hive-metastore-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [tracelake]
+
+
+  # ---------------------------------------------------------------- full: Hive Metastore service
+
+
+
+  hive-metastore:
+    build:
+      context: ./lakehouse/hive-metastore
+    image: tracelake/hive-metastore:4.0.1
+    profiles: [ full, demo ]
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: postgres
+      SERVICE_OPTS: >-
+        -Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver
+        -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://hive-metastore-db:5432/${HIVE_DB_NAME}
+        -Djavax.jdo.option.ConnectionUserName=${HIVE_DB_USER}
+        -Djavax.jdo.option.ConnectionPassword=${HIVE_DB_PASSWORD}
+    depends_on:
+      hive-metastore-db:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9083'" ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+    networks: [ tracelake ]
+
+
+
   # ---------------------------------------------------------------- full: query and dashboards
   trino:
     image: trinodb/trino:470
@@ -486,6 +536,8 @@ services:
     depends_on:
       minio-init:
         condition: service_completed_successfully
+      hive-metastore:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -560,3 +612,4 @@ volumes:
   airflow-db:
   airflow-logs:
   grafana-data:
+  hive-metastore-db-data:
