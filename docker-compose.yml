@@ -537,7 +537,7 @@ services:
       minio-init:
         condition: service_completed_successfully
       hive-metastore:
-        condition: service_started
+        condition: service_healthy
     deploy:
       resources:
         limits:
