@@ -17,6 +17,10 @@ target/
 *.class
 .mvn/wrapper/maven-wrapper.jar
 
+# Fault injection ground truth, written at runtime by make chaos / make heal
+loadgen/chaos/incidents.csv
+loadgen/chaos/incidents.csv.tmp
+
 # Go
 services/restaurants/bin/
 

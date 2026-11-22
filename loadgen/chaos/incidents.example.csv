@@ -1,0 +1,2 @@
+incident_id,fault,target_service,start_ts,end_ts
+F1-20261122T120000Z,F1,payments,2026-11-22T12:00:00Z,2026-11-22T12:02:00Z
