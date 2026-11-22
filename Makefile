@@ -6,7 +6,7 @@ DEMO := $(COMPOSE) --profile demo
 ALL  := $(COMPOSE) --profile core --profile full --profile demo
 
 .DEFAULT_GOAL := help
-.PHONY: help env up up-full demo down clean topics logs ps test test-spark test-dags lint seed bronze order dlq-peek bad-message
+.PHONY: help env up up-full demo down clean topics logs ps test test-spark test-dags lint seed bronze order dlq-peek bad-message chaos heal chaos-status
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  %-12s %s\n", $$1, $$2}'
@@ -67,6 +67,15 @@ bad-message: ## Send one malformed (non JSON) message to otel.traces to test the
 	echo 'not json: {"resourceSpans": [' | $(CORE) exec -T -e KAFKA_HEAP_OPTS=-Xmx128m kafka \
 	  /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic otel.traces
 	@echo "sent one malformed message to otel.traces"
+
+chaos: ## Inject fault F1 (2 s latency on orders -> payments) and record it in incidents.csv
+	bash loadgen/chaos/chaos.sh start F1
+
+heal: ## Remove all toxics and close the open incident in incidents.csv
+	bash loadgen/chaos/chaos.sh heal
+
+chaos-status: ## Show active toxics and the open incident
+	bash loadgen/chaos/chaos.sh status
 
 order: ## Place one food order through the gateway (needs the full profile)
 	curl -fsS -X POST localhost:8000/api/orders -H 'Content-Type: application/json' \
