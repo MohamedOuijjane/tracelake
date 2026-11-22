@@ -56,15 +56,15 @@ This file is the ground truth for detection quality: precision, recall and detec
 
 Under F1 the extra latency is visible on the caller's CLIENT span (orders -> payments), not on the payments SERVER span. Call latency and root cause must be computed from the caller side, with the callee identified through the child SERVER span (`parent_span_id`).
 
-Measured on real `otel.traces` spans, k6 traffic, one 2 minute F1 run:
+Measured on real `otel.traces` spans, k6 traffic, one 2 minute F1 run. Each row pairs every orders CLIENT span to payments with its child payments SERVER span (100% of calls paired):
 
-| Phase | orders CLIENT -> payments, median / p95 | payments SERVER `POST /payments`, median / p95 | Paired calls: CLIENT minus SERVER, median |
-|---|---|---|---|
-| before (1 min) | 104 ms / 163 ms (18 calls) | 95 ms / 152 ms (19 spans) | 6 ms (1 pair) |
-| during F1 (2 min) | 2102 ms / 2155 ms (43 calls) | 103 ms / 146 ms (47 spans) | 2008 ms (15 pairs) |
-| after heal | 93 ms / 152 ms (88 calls) | 77 ms / 150 ms (29 spans) | no pair in this run (recorded before #55) |
+| Phase | Paired calls | orders CLIENT -> payments, median / p95 | payments SERVER `POST /payments`, median / p95 | CLIENT minus SERVER, median / p95 |
+|---|---|---|---|---|
+| before (1.5 min) | 17 | 88 ms / 164 ms | 81 ms / 155 ms | 6 ms / 12 ms |
+| during F1 (2 min) | 41 | 2094 ms / 2159 ms | 89 ms / 151 ms | 2007 ms / 2014 ms |
+| after heal (1.7 min) | 86 | 92 ms / 149 ms | 88 ms / 145 ms | 5 ms / 10 ms |
 
-Incident `F1-20261122T165841Z`, 16:58:41Z to 17:00:41Z.
+Incident `F1-20261122T173453Z`, 17:34:53Z to 17:36:53Z.
 
 The payments SERVER span keeps its normal duration because the delay is added in the network, between the two services. A detector that only looks at SERVER spans of payments would miss F1; it would see orders and gateway slow down instead. Pair each CLIENT span with its child SERVER span to name payments as the slow dependency.
 
