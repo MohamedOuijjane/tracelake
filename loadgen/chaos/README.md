@@ -62,15 +62,11 @@ Measured on real `otel.traces` spans, k6 traffic, one 2 minute F1 run:
 |---|---|---|---|
 | before (1 min) | 104 ms / 163 ms (18 calls) | 95 ms / 152 ms (19 spans) | 6 ms (1 pair) |
 | during F1 (2 min) | 2102 ms / 2155 ms (43 calls) | 103 ms / 146 ms (47 spans) | 2008 ms (15 pairs) |
-| after heal | 93 ms / 152 ms (88 calls) | 77 ms / 150 ms (29 spans) | no pair, see known issue below |
+| after heal | 93 ms / 152 ms (88 calls) | 77 ms / 150 ms (29 spans) | no pair in this run (recorded before #55) |
 
 Incident `F1-20261122T165841Z`, 16:58:41Z to 17:00:41Z.
 
 The payments SERVER span keeps its normal duration because the delay is added in the network, between the two services. A detector that only looks at SERVER spans of payments would miss F1; it would see orders and gateway slow down instead. Pair each CLIENT span with its child SERVER span to name payments as the slow dependency.
-
-### Known issue: missing payments SERVER spans
-
-`orders` calls payments and delivery with the JDK HttpClient, which adds an HTTP/2 upgrade header (`Upgrade: h2c`) to each request. uvicorn answers normally but, on a reused keep-alive connection, the OpenTelemetry instrumentation records a SERVER span only for the first request. Under load most orders -> payments calls therefore have a CLIENT span with no child SERVER span. Reproduced without toxiproxy: three requests on one connection with the header give 1 payments SERVER span, without it 3. Until `orders` is switched to HTTP/1.1, treat a CLIENT span whose `server.address` is `toxiproxy` as a call to payments when its child SERVER span is missing.
 
 ## Next faults
 
