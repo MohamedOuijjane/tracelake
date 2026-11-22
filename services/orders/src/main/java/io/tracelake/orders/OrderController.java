@@ -1,6 +1,8 @@
 package io.tracelake.orders;
 
 import java.math.BigDecimal;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -10,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,6 +33,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *
  * The OpenTelemetry Java agent instruments the RestClient calls: each one is a CLIENT span that
  * sends the W3C traceparent header, so the downstream SERVER spans join the same trace.
+ *
+ * The HTTP client is pinned to HTTP/1.1. By default the JDK client sends an "Upgrade: h2c"
+ * header on cleartext requests. uvicorn (payments, delivery) does not support it and, on a reused
+ * keep-alive connection, its instrumentation then records a SERVER span only for the first
+ * request, which leaves most CLIENT spans without a child SERVER span.
  */
 @RestController
 @RequestMapping("/orders")
@@ -61,9 +69,21 @@ public class OrderController {
                            @Value("${delivery.url}") String deliveryUrl) {
         this.repository = repository;
         this.json = json;
-        this.restaurants = builder.clone().baseUrl(restaurantsUrl).build();
-        this.payments = builder.clone().baseUrl(paymentsUrl).build();
-        this.delivery = builder.clone().baseUrl(deliveryUrl).build();
+        JdkClientHttpRequestFactory http11 = http11RequestFactory();
+        this.restaurants = builder.clone().requestFactory(http11).baseUrl(restaurantsUrl).build();
+        this.payments = builder.clone().requestFactory(http11).baseUrl(paymentsUrl).build();
+        this.delivery = builder.clone().requestFactory(http11).baseUrl(deliveryUrl).build();
+    }
+
+    /** One shared HTTP/1.1 client, with the same timeouts as spring.http.client in application.yml. */
+    private static JdkClientHttpRequestFactory http11RequestFactory() {
+        HttpClient client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(2))
+                .build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(client);
+        factory.setReadTimeout(Duration.ofSeconds(5));
+        return factory;
     }
 
     @PostMapping
