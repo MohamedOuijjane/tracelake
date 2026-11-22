@@ -1,6 +1,6 @@
 # chaos
 
-Fault injection with [Toxiproxy](https://github.com/Shopify/toxiproxy). Each fault has a known cause, start and end, so it doubles as a test for the detection pipeline: we inject a fault on one service and check that the detector names that service.
+Fault injection with [Toxiproxy](https://github.com/Shopify/toxiproxy). Each fault has a known cause, start and end, so it doubles as a test for the detection pipeline: we inject a fault on one service and check that the detector names that service. The F5 control does the opposite: it raises traffic with no fault, and the detector must stay quiet.
 
 ## How it works
 
@@ -12,13 +12,14 @@ The `toxiproxy` service (full and demo profiles) creates its proxies at startup 
 
 With no toxic, the proxy passes traffic through unchanged. Only the `orders -> payments` call goes through it; the gateway `/api/payments` route still calls payments directly.
 
-The Toxiproxy API is published on `127.0.0.1:8474`. [chaos.sh](chaos.sh) drives it with bash and curl only, nothing to install on the host.
+The Toxiproxy API is published on `127.0.0.1:8474`. [chaos.sh](chaos.sh) drives it with bash and curl only, nothing to install on the host. F5 also uses `docker compose` to run the k6 service.
 
 ## Faults
 
 | Id | Target | Effect |
 |---|---|---|
 | F1 | payments | 2000 ms latency on every response from payments to orders (`latency` toxic, downstream) |
+| F5 | none | Control: a lunch shaped k6 peak at 60 peak virtual users (12x normal) for 3 minutes, no fault |
 
 ## Commands
 
@@ -27,6 +28,7 @@ The Toxiproxy API is published on `127.0.0.1:8474`. [chaos.sh](chaos.sh) drives 
 | `make chaos` | Starts F1 and appends an open incident to `incidents.csv`. Refuses if an incident is already open. |
 | `make heal` | Removes all toxics on all proxies and writes `end_ts` of the open incident. |
 | `make chaos-status` | Shows the active toxics per proxy and the open incident. |
+| `make control` | Runs F5: opens an incident, runs k6 at the control peak, closes the incident when k6 finishes (also on failure or Ctrl+C). Refuses if an incident is already open. |
 
 Typical run:
 
@@ -35,8 +37,11 @@ make up-full
 make demo          # k6 traffic
 make chaos         # wait a few minutes
 make heal
+make control       # F5, blocks until the peak is over (about 3 minutes)
 cat loadgen/chaos/incidents.csv
 ```
+
+F5 settings, overridable from the environment: `F5_PEAK_VUS` (default `60`) and `F5_DURATION` (default `3m`), for example `F5_PEAK_VUS=30 F5_DURATION=5m make control`.
 
 ## Ground truth: incidents.csv
 
@@ -46,9 +51,9 @@ Every injected fault is recorded in `loadgen/chaos/incidents.csv`. It is produce
 |---|---|---|
 | `incident_id` | `F1-20261122T120000Z` | Fault id and start time |
 | `fault` | `F1` | Fault id |
-| `target_service` | `payments` | Service the fault is applied to, the expected root cause |
-| `start_ts` | `2026-11-22T12:00:00Z` | When `make chaos` added the toxic, UTC ISO 8601 |
-| `end_ts` | `2026-11-22T12:02:00Z` | When `make heal` removed it, empty while the incident is open |
+| `target_service` | `payments` | Service the fault is applied to, the expected root cause. `none` for F5 |
+| `start_ts` | `2026-11-22T12:00:00Z` | When `make chaos` added the toxic, or when the F5 k6 run started, UTC ISO 8601 |
+| `end_ts` | `2026-11-22T12:02:00Z` | When `make heal` removed the toxic, or when the F5 k6 run ended. Empty while the incident is open |
 
 This file is the ground truth for detection quality: precision, recall and detection delay are computed against it.
 
@@ -68,8 +73,51 @@ Incident `F1-20261122T173453Z`, 17:34:53Z to 17:36:53Z.
 
 The payments SERVER span keeps its normal duration because the delay is added in the network, between the two services. A detector that only looks at SERVER spans of payments would miss F1; it would see orders and gateway slow down instead. Pair each CLIENT span with its child SERVER span to name payments as the slow dependency.
 
+## F5: control peak
+
+F5 raises traffic only. A detector that alerts on F5 is reacting to volume alone; volume must not be an anomaly by itself when latency and errors are normal. Each F5 alert counts as a false positive.
+
+### Calibration
+
+The peak must stay healthy, otherwise it is a real overload and not a valid control. Each level was run alone for 2 minutes with the lunch profile and measured by k6 at the gateway. Normal traffic (`make demo`) is `PEAK_VUS=5`.
+
+| Peak VUs | Requests | Requests/s | Failed | Gateway p95 |
+|---|---|---|---|---|
+| 5 (baseline) | 354 | 2.9 | 0.28% | 294 ms |
+| 10 | 658 | 5.4 | 0.45% | 275 ms |
+| 15 | 991 | 8.1 | 0.20% | 272 ms |
+| 20 | 1310 | 10.7 | 0.30% | 253 ms |
+| 30 | 1990 | 16.3 | 0.55% | 242 ms |
+| 45 | 2954 | 23.9 | 0.27% | 234 ms |
+| 60 | 3899 | 31.2 | 0.25% | 258 ms |
+
+The failed requests are the simulated card declines of payments (502 on part of the direct `/api/payments` calls), present at every level. Gateway p95 stays below the baseline, far from the 2x limit, and service CPU stays near idle, so 60 is the default: the highest level tried, on a laptop with 8 GB for Docker. On a smaller machine, lower it with `F5_PEAK_VUS`.
+
+### Measured run
+
+Background traffic was the normal profile stretched to 60 minutes, so its first stage gives a flat 1 virtual user during the whole window. Then 2 minutes before, `make control`, 2 minutes after. SERVER spans from `otel.traces`, health checks left out:
+
+| Service | Phase | Requests/min | Error rate | p95 |
+|---|---|---|---|---|
+| gateway | before | 82 | 1.8% | 299 ms |
+| gateway | during | 1981 | 0.3% | 259 ms |
+| gateway | after | 83 | 1.2% | 264 ms |
+| orders | before | 18.5 | 0.0% | 311 ms |
+| orders | during | 402 | 0.0% | 286 ms |
+| orders | after | 18.5 | 0.0% | 284 ms |
+| restaurants | before | 65 | 0.0% | 45 ms |
+| restaurants | during | 1853 | 0.0% | 42 ms |
+| restaurants | after | 66 | 0.0% | 44 ms |
+| payments | before | 35.5 | 5.6% | 151 ms |
+| payments | during | 515 | 5.5% | 148 ms |
+| payments | after | 35.5 | 4.2% | 151 ms |
+| delivery | before | 17.5 | 0.0% | 64 ms |
+| delivery | during | 365 | 0.0% | 63 ms |
+| delivery | after | 18 | 0.0% | 62 ms |
+
+Incident `F5-20261122T181748Z`, 18:17:48Z to 18:20:53Z. Volume rises 20x to 28x on every service while error rates and p95 stay at their baseline levels. The payments error rate is its configured 5% decline rate (`PAYMENT_FAILURE_RATE`); the gateway error rate is those declines seen on `/api/payments`, diluted by the extra menu traffic during F5.
+
 ## Next faults
 
 - F2: error rate on restaurants.
-- F5: lunch peak without fault, as a control (no alert expected).
 - F3, F4: network partition and resource saturation, if time remains.
