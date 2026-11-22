@@ -345,6 +345,31 @@ services:
           memory: 256m
     networks: [tracelake]
 
+  # Fault injection. Proxies are created at startup from loadgen/chaos/toxiproxy.json.
+  # With no toxic, traffic passes through unchanged. Toggle faults with make chaos / make heal.
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    profiles: *full-profiles
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    ports:
+      - "127.0.0.1:8474:8474"
+    volumes:
+      - ./loadgen/chaos/toxiproxy.json:/config/toxiproxy.json:ro
+    healthcheck:
+      # The image has no shell: the bundled CLI calls the API on localhost:8474.
+      test: ["CMD", "/toxiproxy-cli", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      payments:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    networks: [tracelake]
+
   # POST /orders calls restaurants, then payments, then delivery.
   orders:
     build: ./services/orders
@@ -357,7 +382,8 @@ services:
       SPRING_DATASOURCE_USERNAME: ${ORDERS_DB_USER}
       SPRING_DATASOURCE_PASSWORD: ${ORDERS_DB_PASSWORD}
       RESTAURANTS_URL: http://restaurants:8080
-      PAYMENTS_URL: http://payments:8000
+      # Through toxiproxy (proxy "payments") so fault F1 can delay this call.
+      PAYMENTS_URL: http://toxiproxy:8666
       DELIVERY_URL: http://delivery:8000
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
@@ -371,6 +397,8 @@ services:
       restaurants:
         condition: service_healthy
       payments:
+        condition: service_healthy
+      toxiproxy:
         condition: service_healthy
       delivery:
         condition: service_healthy

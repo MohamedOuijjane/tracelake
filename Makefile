@@ -17,7 +17,7 @@ env:
 # Init jobs (kafka-init, minio-init, airflow-init) exit when done, and "up --wait" treats any
 # exit as a failure. So we start everything, then wait on the long-running services only.
 CORE_SERVICES := kafka minio spark-master spark-worker
-FULL_SERVICES := $(CORE_SERVICES) otel-collector kafka-ui gateway airflow-webserver airflow-scheduler trino grafana
+FULL_SERVICES := $(CORE_SERVICES) otel-collector kafka-ui toxiproxy gateway airflow-webserver airflow-scheduler trino grafana
 
 up: env ## Start the core profile (Kafka, MinIO, Spark)
 	$(CORE) up -d
