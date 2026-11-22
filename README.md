@@ -117,6 +117,7 @@ Stop with `make down`. Remove all data with `make clean`.
 | Spark worker UI | http://localhost:8083 | |
 | MinIO console | http://localhost:9001 | login from `.env` |
 | MinIO S3 API | http://localhost:9000 | |
+| Kafka UI | http://localhost:8085 | cluster `tracelake`, topics and consumer lag |
 | Kafka (host clients) | localhost:9094 | inside the network: `kafka:9092` |
 | OTLP gRPC / HTTP | localhost:4317 / localhost:4318 | |
 
