@@ -6,10 +6,10 @@ DEMO := $(COMPOSE) --profile demo
 ALL  := $(COMPOSE) --profile core --profile full --profile demo
 
 .DEFAULT_GOAL := help
-.PHONY: help env up up-full demo down clean topics logs ps test test-spark test-dags lint seed bronze order
+.PHONY: help env up up-full demo down clean topics logs ps test test-spark test-dags lint seed bronze order dlq-peek bad-message
 
 help: ## List targets
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  %-10s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  %-12s %s\n", $$1, $$2}'
 
 env:
 	@test -f .env || (cp .env.example .env && echo "created .env from .env.example")
@@ -59,6 +59,14 @@ lint: ## Run ruff on all Python code
 
 seed: ## Push sample OTLP spans to otel.traces
 	$(CORE) exec -T kafka bash /opt/tracelake/kafka/seed-sample-spans.sh
+
+dlq-peek: ## Print the last 10 messages of otel.traces.dlq
+	$(CORE) exec -T kafka bash /opt/tracelake/kafka/dlq-peek.sh
+
+bad-message: ## Send one malformed (non JSON) message to otel.traces to test the DLQ path
+	echo 'not json: {"resourceSpans": [' | $(CORE) exec -T -e KAFKA_HEAP_OPTS=-Xmx128m kafka \
+	  /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic otel.traces
+	@echo "sent one malformed message to otel.traces"
 
 order: ## Place one food order through the gateway (needs the full profile)
 	curl -fsS -X POST localhost:8000/api/orders -H 'Content-Type: application/json' \

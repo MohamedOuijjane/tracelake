@@ -14,6 +14,7 @@ DAY=$((24 * HOUR))
 # name partitions retention_ms
 TOPICS=(
   "otel.traces 6 $((3 * DAY))"
+  "otel.traces.dlq 3 $((7 * DAY))"
   "otel.metrics 3 $((3 * DAY))"
   "otel.logs 3 $((1 * DAY))"
   "alerts 1 $((7 * DAY))"
