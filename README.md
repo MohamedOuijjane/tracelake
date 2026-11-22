@@ -1,6 +1,6 @@
 # tracelake
 
-A real-time observability platform for microservices, demonstrated on a food delivery platform: it collects traces and metrics with OpenTelemetry, streams them through Kafka, stores them in a Hudi lakehouse, detects performance anomalies with Spark, and shows service health in Grafana.
+A real-time observability platform for microservices, demonstrated on a food delivery platform: it collects traces and metrics with OpenTelemetry,  streams them through Kafka, stores them in a Hudi lakehouse, detects performance anomalies with Spark, and shows service health in Grafana.
 
 ## Why
 
