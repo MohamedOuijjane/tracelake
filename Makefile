@@ -6,7 +6,7 @@ DEMO := $(COMPOSE) --profile demo
 ALL  := $(COMPOSE) --profile core --profile full --profile demo
 
 .DEFAULT_GOAL := help
-.PHONY: help env up up-full demo down clean topics logs ps test test-spark test-dags lint seed bronze order dlq-peek bad-message chaos heal chaos-status
+.PHONY: help env up up-full demo down clean topics logs ps test test-spark test-dags lint seed bronze order dlq-peek bad-message chaos heal chaos-status control
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  %-12s %s\n", $$1, $$2}'
@@ -76,6 +76,9 @@ heal: ## Remove all toxics and close the open incident in incidents.csv
 
 chaos-status: ## Show active toxics and the open incident
 	bash loadgen/chaos/chaos.sh status
+
+control: ## Run the F5 control peak (no fault) and record it in incidents.csv
+	bash loadgen/chaos/chaos.sh start F5
 
 order: ## Place one food order through the gateway (needs the full profile)
 	curl -fsS -X POST localhost:8000/api/orders -H 'Content-Type: application/json' \
