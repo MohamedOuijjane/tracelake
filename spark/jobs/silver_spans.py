@@ -157,7 +157,7 @@ def main() -> None:
     if args.date:
         bronze = bronze.where(F.col("date") == args.date)
     # TODO: read only new Bronze files (track last processed kafka offsets or file times).
-    # TODO: send rows that fail to parse to the dlq topic.
+    # TODO: send rows that fail to parse to the otel.traces.dlq topic.
     spans = flatten_spans(bronze).dropDuplicates(["trace_id", "span_id"])
     spans.write.format("hudi").options(**HUDI_OPTIONS).mode("append").save(args.output)
     # TODO: derive silver.service_calls from parent/child pairs across services.

@@ -18,7 +18,6 @@ TOPICS=(
   "otel.metrics 3 $((3 * DAY))"
   "otel.logs 3 $((1 * DAY))"
   "alerts 1 $((7 * DAY))"
-  "dlq 1 $((14 * DAY))"
 )
 
 for entry in "${TOPICS[@]}"; do
