@@ -30,7 +30,7 @@ curl -X POST localhost:8000/api/orders \
 |---|---|---|
 | `201` | `CONFIRMED` | Paid, courier assigned, `courier_id` and `eta_minutes` set |
 | `409` | `REJECTED` | Business rejection: a dish is unknown or unavailable (restaurants answered `409`) |
-| `402` | `PAYMENT_FAILED` | Business rejection by payments (payments answered a `4xx`) |
+| `402` | `PAYMENT_FAILED` | Business rejection: payments declined the card (payments answered `402 DECLINED`) |
 | `404` | | Unknown restaurant, nothing stored |
 | `502` | `CHECK_FAILED`, `PAYMENT_ERROR` or `DELIVERY_FAILED` | A dependency failed: it answered `5xx` (or an unexpected `4xx`) or could not be reached |
 
@@ -42,7 +42,7 @@ A `502` body names the failing dependency, for example:
 
 `detail` is `HTTP <code>` or `connection error: <cause>`. Because the answer is a `5xx`, the orders SERVER span has status `ERROR`, so a failure downstream is visible on orders too. The order row is kept with the status of the step that failed; after `DELIVERY_FAILED` it keeps its `payment_id`.
 
-Payments reports its simulated card declines as `502`, so about 5% of orders end in `502 PAYMENT_ERROR` (`PAYMENT_FAILURE_RATE`).
+Payments answers its simulated card declines with `402`, so about 5% of orders end in `402 PAYMENT_FAILED` (`PAYMENT_FAILURE_RATE`), with no `ERROR` span. `502 PAYMENT_ERROR` is left for real payments failures.
 
 Each request also sleeps 5 to 25 ms to simulate validation.
 

@@ -127,11 +127,13 @@ public class OrderController {
                     .retrieve()
                     .body(PaymentResult.class);
             order.paid(payment.paymentId());
-        } catch (HttpClientErrorException e) {
-            // Business rejection by payments (4xx): the charge was refused.
-            order.status("PAYMENT_FAILED");
-            return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(repository.save(order));
         } catch (RestClientException e) {
+            if (e instanceof HttpClientErrorException http
+                    && http.getStatusCode().value() == HttpStatus.PAYMENT_REQUIRED.value()) {
+                // Business rejection: payments declined the card (402 DECLINED).
+                order.status("PAYMENT_FAILED");
+                return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(repository.save(order));
+            }
             order.status("PAYMENT_ERROR");
             return dependencyFailed("payments", repository.save(order), e);
         }
