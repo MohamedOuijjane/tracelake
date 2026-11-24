@@ -5,7 +5,8 @@ import os
 import random
 import uuid
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 FAILURE_RATE = float(os.getenv("PAYMENT_FAILURE_RATE", "0.05"))
@@ -30,11 +31,21 @@ async def health() -> dict:
     return {"status": "UP"}
 
 
-@app.post("/payments", response_model=PaymentResponse, status_code=201)
-async def pay(request: PaymentRequest) -> PaymentResponse:
-    # Simulate the card processor: variable latency and a small failure rate.
+@app.post(
+    "/payments",
+    response_model=PaymentResponse,
+    status_code=201,
+    responses={402: {"description": "Card declined (business outcome, not an error)"}},
+)
+async def pay(request: PaymentRequest) -> PaymentResponse | JSONResponse:
+    # Simulate the card processor: variable latency and a small decline rate.
     await asyncio.sleep(random.uniform(0.02, 0.15))
     if random.random() < FAILURE_RATE:
-        raise HTTPException(status_code=502, detail="card processor declined")
+        # A decline is a business answer: 402, so the SERVER span is not ERROR.
+        # 5xx stays for real failures of payments itself.
+        return JSONResponse(
+            status_code=402,
+            content={"status": "DECLINED", "order_id": request.order_id, "reason": "card declined"},
+        )
 
     return PaymentResponse(payment_id=str(uuid.uuid4()), order_id=request.order_id, status="PAID")
