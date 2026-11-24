@@ -68,13 +68,14 @@ bad-message: ## Send one malformed (non JSON) message to otel.traces to test the
 	  /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic otel.traces
 	@echo "sent one malformed message to otel.traces"
 
-chaos: ## Inject fault F1 (2 s latency on orders -> payments) and record it in incidents.csv
-	bash loadgen/chaos/chaos.sh start F1
+FAULT ?= F1
+chaos: ## Inject a fault and record it in incidents.csv: F1 latency on payments (default), FAULT=F2 errors on restaurants
+	bash loadgen/chaos/chaos.sh start $(FAULT)
 
-heal: ## Remove all toxics and close the open incident in incidents.csv
+heal: ## Clear every fault (toxics and restaurants errors) and close the open incident
 	bash loadgen/chaos/chaos.sh heal
 
-chaos-status: ## Show active toxics and the open incident
+chaos-status: ## Show active toxics, the restaurants fault and the open incident
 	bash loadgen/chaos/chaos.sh status
 
 control: ## Run the F5 control peak (no fault) and record it in incidents.csv

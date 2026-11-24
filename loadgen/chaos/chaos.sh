@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Fault injection through toxiproxy, with a ground truth record in incidents.csv.
 #
-#   chaos.sh start [F1]   inject a fault and open an incident
+#   chaos.sh start [F1]   F1: 2 s latency on orders -> payments (toxiproxy), opens an incident
+#   chaos.sh start F2     F2: 30% of restaurants requests fail with 503, opens an incident
 #   chaos.sh start F5     control: run a traffic peak with no fault, record it, close it when done
-#   chaos.sh heal         remove all toxics and close the open incident
-#   chaos.sh status       show active toxics and the open incident
+#   chaos.sh heal         clear every fault (toxics and restaurants) and close the open incident
+#   chaos.sh status       show active toxics, the restaurants fault and the open incident
 #
 # Needs only bash, curl and docker compose. Talks to the toxiproxy API published on
-# 127.0.0.1:8474. F5 runs the k6 service of docker-compose.yml.
+# 127.0.0.1:8474, and to the restaurants admin endpoint from inside its container (it is not
+# published nor routed by the gateway). F5 runs the k6 service of docker-compose.yml.
 set -euo pipefail
 
 API="${TOXIPROXY_API:-http://127.0.0.1:8474}"
@@ -20,6 +22,8 @@ ROOT="$(cd "$DIR/../.." && pwd)"
 # highest level calibrated as healthy on a reference machine (see README.md).
 F5_PEAK_VUS="${F5_PEAK_VUS:-60}"
 F5_DURATION="${F5_DURATION:-3m}"
+# F2: share of restaurants requests that fail.
+F2_ERROR_RATE="${F2_ERROR_RATE:-0.3}"
 
 die() { echo "chaos: $*" >&2; exit 1; }
 
@@ -28,6 +32,17 @@ api() {
   local args=(-fsS -X "$method" "$API$path")
   [ -n "$body" ] && args+=(-H 'Content-Type: application/json' -d "$body")
   curl "${args[@]}" || die "toxiproxy API call failed: $method $path (is the full profile up?)"
+}
+
+# Restaurants fault endpoint, called from inside the container with busybox wget.
+# fault_api            prints the current fault
+# fault_api <rate>     sets the error rate (0 clears it)
+fault_api() {
+  local args=(-qO- --header 'Content-Type: application/json')
+  [ $# -gt 0 ] && args+=(--post-data "{\"error_rate\": $1}")
+  (cd "$ROOT" && docker compose exec -T restaurants wget "${args[@]}" \
+    http://localhost:8080/admin/fault 2> /dev/null) ||
+    die "restaurants fault endpoint failed (is the full profile up with CHAOS_ENABLED=true?)"
 }
 
 # Prints the open incident line (end_ts empty), if any.
@@ -49,11 +64,15 @@ fault_spec() {
       TOXIC='{"name":"f1_latency","type":"latency","stream":"downstream","toxicity":1.0,"attributes":{"latency":2000,"jitter":0}}'
       DESCRIPTION="2000 ms latency on orders -> payments"
       ;;
+    F2)
+      TARGET=restaurants
+      DESCRIPTION="$F2_ERROR_RATE of restaurants requests fail with 503"
+      ;;
     F5)
       TARGET=none
       DESCRIPTION="control peak, no fault: k6 at PEAK_VUS=$F5_PEAK_VUS for $F5_DURATION"
       ;;
-    *) die "unknown fault: $1 (supported: F1, F5)" ;;
+    *) die "unknown fault: $1 (supported: F1, F2, F5)" ;;
   esac
 }
 
@@ -69,7 +88,11 @@ start() {
     return
   fi
 
-  api POST "/proxies/$PROXY/toxics" "$TOXIC" > /dev/null
+  if [ "$fault" = F2 ]; then
+    fault_api "$F2_ERROR_RATE" > /dev/null
+  else
+    api POST "/proxies/$PROXY/toxics" "$TOXIC" > /dev/null
+  fi
   open_new "$fault"
   echo "chaos: $INCIDENT_ID started ($DESCRIPTION)"
 }
@@ -109,10 +132,11 @@ control() {
 heal() {
   # POST /reset removes every toxic on every proxy and re-enables them.
   api POST /reset > /dev/null
+  fault_api 0 > /dev/null
   local open
   open="$(open_incident)"
   if [ -z "$open" ]; then
-    echo "chaos: toxics removed, no open incident"
+    echo "chaos: toxics and restaurants fault cleared, no open incident"
     return
   fi
   local id="${open%%,*}"
@@ -127,6 +151,7 @@ status() {
   for p in $proxies; do
     echo "  $p: $(api GET "/proxies/$p/toxics")"
   done
+  echo "restaurants fault: $(fault_api)"
   local open
   open="$(open_incident)"
   echo "open incident: ${open:-none}"
@@ -136,5 +161,5 @@ case "${1:-}" in
   start) shift; start "$@" ;;
   heal) heal ;;
   status) status ;;
-  *) die "usage: chaos.sh start [F1|F5] | heal | status" ;;
+  *) die "usage: chaos.sh start [F1|F2|F5] | heal | status" ;;
 esac

@@ -289,6 +289,9 @@ services:
       <<: *otel-env
       OTEL_SERVICE_NAME: restaurants
       PORT: "8080"
+      # Enables POST/DELETE /admin/fault for chaos fault F2. Internal only: not published,
+      # not routed by the gateway.
+      CHAOS_ENABLED: "true"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/health"]
       interval: 10s
