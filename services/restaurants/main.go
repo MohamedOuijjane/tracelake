@@ -175,8 +175,14 @@ func main() {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "UP"})
 	})
-	mux.Handle("GET /restaurants/{id}/menu", traced("GET /restaurants/{id}/menu", menu))
-	mux.Handle("POST /restaurants/{id}/check", traced("POST /restaurants/{id}/check", check))
+	fault := newFaultInjector()
+	mux.Handle("GET /restaurants/{id}/menu", fault.traced("GET /restaurants/{id}/menu", menu))
+	mux.Handle("POST /restaurants/{id}/check", fault.traced("POST /restaurants/{id}/check", check))
+	// Chaos admin endpoints, internal to the docker network (the gateway does not route /admin).
+	if os.Getenv("CHAOS_ENABLED") == "true" {
+		mux.HandleFunc("/admin/fault", fault.admin)
+		log.Printf("chaos admin enabled on /admin/fault")
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
