@@ -87,27 +87,27 @@ Background traffic was the normal profile stretched to 60 minutes (flat 1 virtua
 
 | Service | Phase | Requests | Error rate | p95 |
 |---|---|---|---|---|
-| gateway | before | 82 | 1.2% | 257 ms |
-| gateway | during | 183 | 25.1% | 257 ms |
-| gateway | after | 167 | 0.0% | 265 ms |
-| orders | before | 18 | 0.0% | 301 ms |
-| orders | during | 37 | 0.0% | 312 ms |
-| orders | after | 37 | 0.0% | 290 ms |
-| restaurants | before | 67 | 0.0% | 48 ms |
-| restaurants | during | 148 | 36.5% | 42 ms |
-| restaurants | after | 135 | 0.0% | 46 ms |
-| payments | before | 33 | 6.1% | 145 ms |
-| payments | during | 61 | 1.6% | 148 ms |
-| payments | after | 70 | 4.3% | 144 ms |
-| delivery | before | 17 | 0.0% | 62 ms |
-| delivery | during | 27 | 0.0% | 61 ms |
-| delivery | after | 34 | 0.0% | 64 ms |
+| gateway | before | 84 | 1.2% | 294 ms |
+| gateway | during | 184 | 31.5% | 239 ms |
+| gateway | after | 158 | 1.9% | 261 ms |
+| orders | before | 19 | 0.0% | 326 ms |
+| orders | during | 36 | 47.2% | 324 ms |
+| orders | after | 34 | 2.9% | 300 ms |
+| restaurants | before | 69 | 0.0% | 41 ms |
+| restaurants | during | 149 | 34.9% | 37 ms |
+| restaurants | after | 125 | 0.0% | 45 ms |
+| payments | before | 33 | 3.0% | 145 ms |
+| payments | during | 55 | 10.9% | 153 ms |
+| payments | after | 67 | 4.5% | 146 ms |
+| delivery | before | 18 | 0.0% | 66 ms |
+| delivery | during | 18 | 0.0% | 63 ms |
+| delivery | after | 33 | 0.0% | 57 ms |
 
-Incident `F2-20261124T194500Z`, 19:45:00Z to 19:47:00Z. Restaurants fails 54 of 148 requests (36.5%, the draw is random per request around 30%) and only during F2. Latency does not change. Payments errors are its configured 5% card declines.
+Incident `F2-20261124T200616Z`, 20:06:16Z to 20:08:16Z. Restaurants fails 52 of 149 requests (34.9%, the draw is random per request around 30%) and only during F2. Latency does not change. Payments errors are its configured 5% card declines, which vary a lot on small counts.
 
-All 54 restaurants ERROR spans pair with a caller CLIENT span through `parent_span_id`: 45 from gateway (`/api/menu`, the 503 is passed through, hence 25% errors on gateway) and 9 from orders (the availability check).
+All 52 restaurants ERROR spans pair with a caller CLIENT span through `parent_span_id`: 37 from gateway (`/api/menu`, the 503 is passed through) and 15 from orders (the availability check).
 
-orders shows its errors on the caller side only. Its 9 CLIENT spans to restaurants have status `ERROR` (503), but orders then answers `409 REJECTED`, the same answer as an unavailable dish, so its SERVER spans stay without error. A detector must read the CLIENT spans to see that orders is affected, and should not take orders 409s as a cause.
+The errors spread to both callers. Gateway passes the restaurants 503 through on `/api/menu`. orders answers `502` when a dependency fails, so its own SERVER span is `ERROR`: during F2, 15 of its 36 requests failed because of restaurants and 2 because of a payments decline, while the one `409` is a real unavailable dish and stays without error. Restaurants is still the deepest service whose own SERVER spans are in error.
 
 ## F5: control peak
 
