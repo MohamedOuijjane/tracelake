@@ -3,6 +3,7 @@ package io.tracelake.orders;
 import java.math.BigDecimal;
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -20,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -105,9 +108,13 @@ public class OrderController {
                     .body(CheckResult.class);
         } catch (HttpClientErrorException.NotFound e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "unknown restaurant"));
-        } catch (RestClientException e) {
+        } catch (HttpClientErrorException.Conflict e) {
+            // Business rejection: a dish is unknown or unavailable.
             order.status("REJECTED");
             return ResponseEntity.status(HttpStatus.CONFLICT).body(repository.save(order));
+        } catch (RestClientException e) {
+            order.status("CHECK_FAILED");
+            return dependencyFailed("restaurants", repository.save(order), e);
         }
         order.priced(check.total(), check.preparationMinutes());
         order = repository.save(order);
@@ -120,9 +127,13 @@ public class OrderController {
                     .retrieve()
                     .body(PaymentResult.class);
             order.paid(payment.paymentId());
-        } catch (RestClientException e) {
+        } catch (HttpClientErrorException e) {
+            // Business rejection by payments (4xx): the charge was refused.
             order.status("PAYMENT_FAILED");
             return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(repository.save(order));
+        } catch (RestClientException e) {
+            order.status("PAYMENT_ERROR");
+            return dependencyFailed("payments", repository.save(order), e);
         }
 
         // 3. Delivery: assign a courier.
@@ -139,12 +150,39 @@ public class OrderController {
             order.dispatched(courier.courierId(), courier.etaMinutes());
             order.status("CONFIRMED");
         } catch (RestClientException e) {
-            // Paid but no courier yet: accepted, a dispatcher will retry.
-            log.warn("order {} paid but delivery failed: {}", order.getId(), e.getMessage());
-            order.status("AWAITING_COURIER");
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(repository.save(order));
+            // Paid but no courier: the order row keeps the payment id for a later retry.
+            order.status("DELIVERY_FAILED");
+            return dependencyFailed("delivery", repository.save(order), e);
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(repository.save(order));
+    }
+
+    /**
+     * A dependency answered 5xx, an unexpected 4xx, or could not be reached: answer 502 and name it.
+     * The 5xx status makes the orders SERVER span ERROR, so detection sees that orders is affected.
+     */
+    private ResponseEntity<Map<String, Object>> dependencyFailed(String dependency, Order order,
+                                                                 RestClientException e) {
+        String detail = e instanceof HttpStatusCodeException http
+                ? "HTTP " + http.getStatusCode().value()
+                : e instanceof ResourceAccessException
+                        ? "connection error: " + rootCause(e).getClass().getSimpleName()
+                        : e.getClass().getSimpleName();
+        log.warn("order {}: {} failed ({})", order.getId(), dependency, detail);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "dependency failed");
+        body.put("dependency", dependency);
+        body.put("detail", detail);
+        body.put("order_id", order.getId());
+        body.put("status", order.getStatus());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body);
+    }
+
+    private static Throwable rootCause(Throwable e) {
+        while (e.getCause() != null && e.getCause() != e) {
+            e = e.getCause();
+        }
+        return e;
     }
 
     @GetMapping("/{id}")
