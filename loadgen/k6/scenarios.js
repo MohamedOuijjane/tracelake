@@ -1,16 +1,25 @@
 // k6 load scenarios for the food delivery platform: browse a menu, place an order, pay.
 //
-// Every scenario follows the same lunch peak profile over LOAD_DURATION:
-//   quiet morning -> ramp up -> lunch peak -> ramp down -> quiet afternoon
-// PEAK_VUS is the number of virtual users browsing at the peak. Fewer users order and pay.
+// LOAD_PROFILE picks the traffic shape, the same for every scenario:
+//   lunch (default)  one lunch peak over LOAD_DURATION, used by make demo and make control:
+//                    quiet morning -> ramp up -> lunch peak -> ramp down -> quiet afternoon
+//   day              a full food delivery day, 24 hourly levels on real clock hours:
+//                    quiet night, lunch peak 12:00 to 14:00, dinner peak 19:00 to 22:00 (the
+//                    highest). LOAD_DURATION is the length of the replayed day: 24m (default)
+//                    gives 1 minute per hour, 24h replays it at real speed. DAY_START_HOUR
+//                    (0 to 23, default 0) is the clock hour the run starts at.
+// PEAK_VUS is the number of virtual users browsing at the highest peak (lunch for the lunch
+// profile, dinner for the day profile). Fewer users order and pay.
 // Do not name these K6_VUS or K6_DURATION in the environment: k6 reads those itself and
 // they replace the scenarios below.
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8000';
+const PROFILE = __ENV.LOAD_PROFILE || 'lunch';
 const PEAK_VUS = parseInt(__ENV.PEAK_VUS || '5', 10);
-const DURATION = __ENV.LOAD_DURATION || '2m';
+const DURATION = __ENV.LOAD_DURATION || (PROFILE === 'day' ? '24m' : '2m');
+const DAY_START_HOUR = parseInt(__ENV.DAY_START_HOUR || '0', 10);
 const JSON_HEADERS = { headers: { 'Content-Type': 'application/json' } };
 
 // "90s", "2m", "1h" -> seconds.
@@ -37,12 +46,46 @@ function lunchPeak(peak) {
   }));
 }
 
+// Day profile: share of the dinner peak for each clock hour, 0:00 to 23:00.
+// Night is near empty, breakfast and afternoon are quiet, lunch reaches 70% and dinner 100%.
+const DAY = [
+  0.1, 0.05, 0.05, 0.05, 0.05, 0.05, // 00:00 to 05:00 night
+  0.1, 0.15, 0.2, 0.2, 0.25, 0.4, // 06:00 to 11:00 morning, building up
+  0.7, 0.7, // 12:00 to 14:00 lunch peak
+  0.4, 0.25, 0.2, 0.25, 0.5, // 14:00 to 19:00 quiet afternoon, then early evening
+  1.0, 1.0, 1.0, // 19:00 to 22:00 dinner peak
+  0.5, 0.2, // 22:00 to 24:00 late evening
+];
+
+// Each simulated hour: a short ramp (one sixth of the hour) to its level, then a hold, so the
+// load of an hour is flat and readable hour by hour.
+function dayStages(peak) {
+  if (!(DAY_START_HOUR >= 0 && DAY_START_HOUR < 24)) {
+    throw new Error(`DAY_START_HOUR must be 0 to 23, got ${__ENV.DAY_START_HOUR}`);
+  }
+  const hour = seconds(DURATION) / 24;
+  const ramp = Math.max(1, Math.round(hour / 6));
+  const stages = [];
+  for (let i = 0; i < 24; i++) {
+    const target = Math.max(1, Math.round(peak * DAY[(DAY_START_HOUR + i) % 24]));
+    stages.push({ duration: `${ramp}s`, target });
+    stages.push({ duration: `${Math.max(1, Math.round(hour) - ramp)}s`, target });
+  }
+  return stages;
+}
+
+function stages(peak) {
+  if (PROFILE === 'lunch') return lunchPeak(peak);
+  if (PROFILE === 'day') return dayStages(peak);
+  throw new Error(`LOAD_PROFILE must be lunch or day, got ${PROFILE}`);
+}
+
 function scenario(exec, peak) {
   return {
     executor: 'ramping-vus',
     exec,
     startVUs: 1,
-    stages: lunchPeak(peak),
+    stages: stages(peak),
     gracefulRampDown: '10s',
   };
 }
