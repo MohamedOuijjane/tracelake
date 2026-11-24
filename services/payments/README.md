@@ -1,6 +1,6 @@
 # payments
 
-Payment service on FastAPI (Python 3.12). It simulates a card processor with random latency and a configurable failure rate. `orders` calls it after the restaurant confirms the dishes are available.
+Payment service on FastAPI (Python 3.12). It simulates a card processor with random latency and a configurable decline rate. `orders` calls it after the restaurant confirms the dishes are available.
 
 ## Endpoints
 
@@ -15,7 +15,13 @@ curl -X POST localhost:8000/api/payments \
   -d '{"order_id":1,"amount":24.5}'
 ```
 
-Returns `201` with a payment id, or `502` when the simulated processor declines.
+| Code | Body | Meaning |
+|---|---|---|
+| `201` | `{"payment_id": "...", "order_id": 1, "status": "PAID"}` | Charged |
+| `402` | `{"status": "DECLINED", "order_id": 1, "reason": "card declined"}` | Simulated card decline, a business answer |
+| `5xx` | | Real failure of payments itself only |
+
+A decline is not an error: its SERVER span stays without `ERROR`, so declines do not count in the error rate that detection watches. About `PAYMENT_FAILURE_RATE` (5%) of the charges are declined.
 
 ## Telemetry
 
@@ -31,7 +37,7 @@ Started with `opentelemetry-instrument`. FastAPI is instrumented automatically a
 
 | Variable | Default |
 |---|---|
-| `PAYMENT_FAILURE_RATE` | `0.05` |
+| `PAYMENT_FAILURE_RATE` | `0.05`, share of charges declined with `402` |
 
 ## Run locally
 

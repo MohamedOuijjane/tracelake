@@ -103,11 +103,11 @@ Background traffic was the normal profile stretched to 60 minutes (flat 1 virtua
 | delivery | during | 18 | 0.0% | 63 ms |
 | delivery | after | 33 | 0.0% | 57 ms |
 
-Incident `F2-20261124T200616Z`, 20:06:16Z to 20:08:16Z. Restaurants fails 52 of 149 requests (34.9%, the draw is random per request around 30%) and only during F2. Latency does not change. Payments errors are its configured 5% card declines, which vary a lot on small counts.
+Incident `F2-20261124T200616Z`, 20:06:16Z to 20:08:16Z. Restaurants fails 52 of 149 requests (34.9%, the draw is random per request around 30%) and only during F2. Latency does not change. The payments error rate in this table is its 5% card declines, which payments answered with `502` at the time of this run; since #60 they are `402` business answers and no longer count as errors.
 
 All 52 restaurants ERROR spans pair with a caller CLIENT span through `parent_span_id`: 37 from gateway (`/api/menu`, the 503 is passed through) and 15 from orders (the availability check).
 
-The errors spread to both callers. Gateway passes the restaurants 503 through on `/api/menu`. orders answers `502` when a dependency fails, so its own SERVER span is `ERROR`: during F2, 15 of its 36 requests failed because of restaurants and 2 because of a payments decline, while the one `409` is a real unavailable dish and stays without error. Restaurants is still the deepest service whose own SERVER spans are in error.
+The errors spread to both callers. Gateway passes the restaurants 503 through on `/api/menu`. orders answers `502` when a dependency fails, so its own SERVER span is `ERROR`: during F2, 15 of its 36 requests failed because of restaurants and 2 because of a payments decline (a `502` at the time, a `402` business answer since #60), while the one `409` is a real unavailable dish and stays without error. Restaurants is still the deepest service whose own SERVER spans are in error.
 
 ## F5: control peak
 
@@ -127,7 +127,7 @@ The peak must stay healthy, otherwise it is a real overload and not a valid cont
 | 45 | 2954 | 23.9 | 0.27% | 234 ms |
 | 60 | 3899 | 31.2 | 0.25% | 258 ms |
 
-The failed requests are the simulated card declines of payments (502 on part of the direct `/api/payments` calls), present at every level. Gateway p95 stays below the baseline, far from the 2x limit, and service CPU stays near idle, so 60 is the default: the highest level tried, on a laptop with 8 GB for Docker. On a smaller machine, lower it with `F5_PEAK_VUS`.
+The failed requests are the simulated card declines of payments, answered `502` on part of the direct `/api/payments` calls at the time of this calibration and present at every level. Since #60 declines are `402` and no longer count as failed. Gateway p95 stays below the baseline, far from the 2x limit, and service CPU stays near idle, so 60 is the default: the highest level tried, on a laptop with 8 GB for Docker. On a smaller machine, lower it with `F5_PEAK_VUS`.
 
 ### Measured run
 
@@ -151,7 +151,7 @@ Background traffic was the normal profile stretched to 60 minutes, so its first 
 | delivery | during | 365 | 0.0% | 63 ms |
 | delivery | after | 18 | 0.0% | 62 ms |
 
-Incident `F5-20261122T181748Z`, 18:17:48Z to 18:20:53Z. Volume rises 20x to 28x on every service while error rates and p95 stay at their baseline levels. The payments error rate is its configured 5% decline rate (`PAYMENT_FAILURE_RATE`); the gateway error rate is those declines seen on `/api/payments`, diluted by the extra menu traffic during F5.
+Incident `F5-20261122T181748Z`, 18:17:48Z to 18:20:53Z. Volume rises 20x to 28x on every service while error rates and p95 stay at their baseline levels. The payments error rate is its configured 5% decline rate (`PAYMENT_FAILURE_RATE`), answered `502` at the time of this run; the gateway error rate is those declines seen on `/api/payments`, diluted by the extra menu traffic during F5. Since #60 declines are `402` business answers, so these error rates are about 0% outside a fault.
 
 ## Next faults
 

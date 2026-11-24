@@ -111,6 +111,6 @@ export function pay() {
     amount: Math.round(Math.random() * 500) / 100 + 1,
   });
   const res = http.post(`${BASE_URL}/api/payments`, body, JSON_HEADERS);
-  check(res, { 'payment handled': (r) => r.status === 201 || r.status === 502 });
+  check(res, { 'payment handled': (r) => r.status === 201 || r.status === 402 });
   sleep(2 + Math.random() * 3);
 }
